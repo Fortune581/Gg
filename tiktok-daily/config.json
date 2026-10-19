@@ -1,0 +1,26 @@
+{
+  "timezone": "Africa/Lusaka",
+  "publish_time": "08:00",
+  "brand": "ZM / WORLD",
+  "audience": "Zambian and international English-speaking viewers",
+  "width": 1080,
+  "height": 1920,
+  "fps": 24,
+  "min_seconds": 20,
+  "max_seconds": 45,
+  "max_age_hours": 36,
+  "repeat_window_days": 14,
+  "model_threads": 2,
+  "trend_geos": ["ZM", "ZA", "US"],
+  "news_feeds": [
+    {"name": "Lusaka Times", "url": "https://www.lusakatimes.com/feed/", "region": "ZM", "primary": false},
+    {"name": "ZNBC", "url": "https://www.znbc.co.zm/news/feed/", "region": "ZM", "primary": false},
+    {"name": "NASA", "url": "https://www.nasa.gov/feed/", "region": "world", "primary": true},
+    {"name": "BBC Technology", "url": "https://feeds.bbci.co.uk/news/technology/rss.xml", "region": "world", "primary": false}
+  ],
+  "allowed_topic_words": ["football", "soccer", "rugby", "sport", "game", "gaming", "music", "festival", "science", "space", "nasa", "technology", "tech", "robot", "artificial intelligence", "ai", "phone", "iphone", "android", "internet", "discovery", "culture", "travel", "tourism", "wildlife", "education", "school", "university", "zambia", "lusaka", "kitwe", "ndola"],
+  "excluded_topic_words": ["election", "president", "minister", "parliament", "murder", "killed", "death", "dead", "war", "attack", "rape", "suicide", "betting", "casino", "porn", "cure", "vaccine", "investment", "crypto", "rumour", "rumor", "allegation", "arrested"],
+  "buffer_endpoint": "https://api.buffer.com",
+  "state_path": "automation-state/ledger.json",
+  "retention_days": 7
+}

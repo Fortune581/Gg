@@ -1,0 +1,69 @@
+name: Verify workflow
+on:
+  push:
+    paths: ['tiktok-daily/**', '.github/workflows/tiktok-*.yml']
+  pull_request:
+    paths: ['tiktok-daily/**', '.github/workflows/tiktok-*.yml']
+permissions:
+  contents: read
+jobs:
+  test:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: tiktok-daily
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -v
+
+  real-video:
+    if: github.event.repository.private == false && github.event_name == 'push' && github.ref_name == 'tiktok-daily-automation'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: tiktok-daily
+    env:
+      CC: gcc
+      CXX: g++
+      CMAKE_BUILD_PARALLEL_LEVEL: '2'
+      CMAKE_ARGS: '-DGGML_NATIVE=OFF'
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+      TIKTOK_MODELS_DIR: ${{ github.workspace }}/.models
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tiktok-daily/requirements.txt
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg fonts-dejavu-core build-essential cmake
+      - uses: actions/cache@v4
+        with:
+          path: .models
+          key: tiktok-local-models-${{ hashFiles('tiktok-daily/assets.lock.json') }}
+      - run: python -m pip install -r requirements.txt
+      - run: python scripts/download_models.py
+      - name: Run real research, AI writing, neural voice, and rendering
+        run: python -m tiktok_daily preview --output output/smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-video-${{ github.run_id }}
+          retention-days: 2
+          if-no-files-found: ignore
+          path: |
+            tiktok-daily/output/smoke/video.mp4
+            tiktok-daily/output/smoke/*.json
+            tiktok-daily/output/smoke/subtitles.srt
+            tiktok-daily/output/smoke/caption.txt
