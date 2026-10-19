@@ -102,20 +102,21 @@ def card(scene, package, candidate, index, cfg, target, day):
     draw.text((95,117),cfg["brand"],font=font(26,True),fill="#b4f2d3")
     draw.text((685,122),day,font=font(25),fill="#a0b3b8")
     draw.text((75,226),candidate["signal_label"],font=font(27,True),fill=accent)
-    titlefont = font(80, True)
-    lines = wrap_pixels(draw,scene["title"],titlefont,810)
+    display_title=package["title"] if index==0 else scene["title"]
+    titlefont = font(76, True)
+    lines = wrap_pixels(draw,display_title,titlefont,810)
     if len(lines)>4:
-        titlefont=font(68,True)
-        lines=wrap_pixels(draw,scene["title"],titlefont,810)
+        titlefont=font(62,True)
+        lines=wrap_pixels(draw,display_title,titlefont,810)
     for j,line in enumerate(lines):
         draw.text((72,315+j*102),line,font=titlefont,fill="#f5faf6")
     # An original abstract orbit illustration: no stock footage or licensing dependency.
-    cx,cy=450,970
-    for r in [130,205,280]:
+    cx,cy=450,1040
+    for r in [80,135,190]:
         draw.ellipse((cx-r,cy-r,cx+r,cy+r),outline="#36545c",width=3)
     for i in range(28):
         angle=i*math.tau/28 + index*.22
-        radius=200+(i%3)*24
+        radius=140+(i%3)*24
         x=cx+math.cos(angle)*radius
         y=cy+math.sin(angle)*radius
         dot=5+(i%4)*3

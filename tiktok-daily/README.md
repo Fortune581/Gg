@@ -8,7 +8,7 @@ The code lives in `tiktok-daily/` inside the connected repository. The two workf
 
 1. Research fresh Google search trends for Zambia, South Africa, and the US, and fresh Zambian/international RSS items. Each feed is independent; a failed feed is recorded. A country can have no trend results.
 2. Fetch article excerpts, require either a primary publisher or two distinct publisher domains, reject stale inputs and unrelated extracted text, and avoid topics recently used.
-3. Run **Qwen2.5-1.5B-Instruct Q4_K_M locally** on the runner to write a four-scene script, caption, and hashtags. Validate structure, length, unsupported numbers, source references, and substantial copying. Run a second local evidence check. This is a heuristic check, not a guarantee of factual accuracy.
+3. Run **Qwen2.5-1.5B-Instruct Q4_K_M locally** on the runner to write a four-scene script, caption, and hashtags. Validate structure, length, unsupported numbers, source references, and substantial copying. Numerical survey percentages are omitted from unattended scripts and rejected by validation. Run a second local evidence check. This is a heuristic check, not a guarantee of factual accuracy.
 4. Run **Piper neural text-to-speech locally** with the LJ Speech voice. Generate original animated typography and abstract graphics with Pillow and FFmpeg. Burn captions into the video and export an SRT.
 5. Verify a complete **1080×1920 H.264/AAC MP4**, decode the whole file, and enforce a 20–45 second duration and 50 MB cap.
 6. Publish the MP4 as a public GitHub Release asset with a stable URL. Buffer requires public media hosting; an Actions artifact download URL would require authentication and is unsuitable.
@@ -74,6 +74,12 @@ The Actions concurrency group serializes all daily runs. A date-keyed repository
 If Buffer may have accepted a request before a timeout, the date remains `submission_uncertain`. A later run searches existing Buffer posts for the exact caption and recovers the ID if found. If it cannot prove the outcome, it stops. Inspect Buffer before manually clearing that ledger entry. This favors avoiding duplicate posts over guaranteeing a post after an ambiguous failure.
 
 If a post is scheduled but does not send, inspect Buffer's error, reconnect the channel if needed, and use status mode to verify. The script does not automatically recreate errored posts.
+
+## Validation status
+
+Local regression checks cover timezone conversion, date rollover, stale/future dates, Buffer GraphQL payloads, errors, channel eligibility, delivery status, duplicate prevention after ambiguous network failure, captions, hashtag cleanup, and statistic restrictions. A real local video was generated and decoded. A manual review caught a survey-population error that the small model had approved; that run was rejected for delivery, and a stricter editorial rule was added. The model evidence check is not independent factual verification.
+
+GitHub Actions was triggered on the implementation branch; a queued run is not a passing run. Buffer credentials are not available, so no real Buffer submission or TikTok publication has occurred. The existing ChatGPT task is still enabled until activation.
 
 ## Sources and licenses
 

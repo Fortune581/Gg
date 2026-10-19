@@ -173,7 +173,7 @@ def main():
                 stream.write("\nDaily TikTok result\n\n```json\n"+json.dumps(result,indent=2)+"\n```\n")
         return 0
     except WorkflowError as exc:
-        dump(out/"error.json",{"status":"failed","error":str(exc),"published":False,
+        dump(out/"error.json",{"status":"failed","error":str(exc),"published":None if args.mode in ("live","status") else False,
                                "note":"Inspect the durable ledger if a Buffer submission was attempted."})
         print("Workflow stopped:",str(exc),file=sys.stderr,flush=True)
         return 1

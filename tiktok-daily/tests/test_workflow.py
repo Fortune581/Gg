@@ -12,7 +12,7 @@ from tiktok_daily.common import WorkflowError, config, due_time
 from tiktok_daily.publishing import Buffer, GitHub, post_summary, public_media_check
 from tiktok_daily.research import is_fresh, parse_trends
 from tiktok_daily.video import subtitles, timestamp
-from tiktok_daily.writer import validate_package
+from tiktok_daily.writer import validate_package, finalize_package
 from tiktok_daily.__main__ import live
 
 
@@ -142,6 +142,44 @@ class SubtitleTests(unittest.TestCase):
         self.assertTrue(all(a["end"]==b["start"] for a,b in zip(cues,cues[1:])))
         self.assertEqual(" ".join(c["text"] for c in cues),"One two three four five six seven eight nine ten eleven twelve thirteen")
         self.assertEqual(timestamp(61.999),"00:01:01,999")
+
+
+class EditorialTests(unittest.TestCase):
+    def fixture(self):
+        candidate={"title":"Grand Theft Auto VI", "sources":[{"id":"1","title":"Gaming relationships",
+            "excerpt":"Some respondents say that forming romantic relationships with fictional characters can create difficulties between real partners. The survey asked adults about their opinions."}]}
+        sentences=[
+            "Could your partner see a relationship in a video game as crossing a boundary in real life?",
+            "Some people have concerns when fictional romance starts to feel like a connection outside their real relationship.",
+            "The discussion is about how couples understand their boundaries when a romantic interest exists inside a game.",
+            "Would you see things the same way, or would you draw a different line for your own relationship?"]
+        package={"title":"A gaming dilemma","scenes":[{"title":"A gaming question","narration":s,"source_ids":["1"]} for s in sentences],
+                 "caption":"Would a fictional romance change how you see your real relationship?","hashtags":["#Zambia","#Gaming","#Explained"]}
+        return package,candidate
+
+    def test_placeholder_tags_and_production_labels_are_normalized(self):
+        package,candidate=self.fixture()
+        package["hashtags"]=["#Topic","#FYP","#Explained"]
+        package["scenes"][0]["title"]="Hook"
+        finalize_package(package,candidate)
+        self.assertIn("#GrandTheftAutoVi",package["hashtags"])
+        self.assertNotIn("#Topic",package["hashtags"])
+        self.assertNotIn("#FYP",package["hashtags"])
+        self.assertEqual(package["scenes"][0]["title"],"The story")
+        self.assertTrue(validate_package(package,candidate))
+
+    def test_percentage_claims_are_blocked_even_when_source_contains_them(self):
+        package,candidate=self.fixture()
+        candidate["sources"][0]["excerpt"]+=" 13% of surveyed men disagree."
+        package["scenes"][0]["narration"]+=" About 13% disagree."
+        with self.assertRaisesRegex(WorkflowError,"survey statistics"):
+            validate_package(package,candidate)
+
+    def test_new_numbers_and_spoken_hashtags_are_blocked(self):
+        for extra in [" There are 782 people."," #Gaming"]:
+            package,candidate=self.fixture()
+            package["scenes"][0]["narration"]+=extra
+            with self.assertRaises(WorkflowError):validate_package(package,candidate)
 
 
 if __name__=="__main__":
