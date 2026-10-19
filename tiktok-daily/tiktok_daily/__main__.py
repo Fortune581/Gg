@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -45,8 +46,18 @@ def generate(cfg,out,now,seen=(),candidate_file=None,package_file=None):
                 if writer is None:
                     writer=Writer(cfg)
                 package=writer.write(candidate,cfg)
-                verification=writer.verify(package,candidate)
+                for check in range(2):
+                    try:
+                        verification=writer.verify(package,candidate)
+                        break
+                    except WorkflowError as issue:
+                        if check:
+                            raise
+                        print("Revising the AI script after an evidence-check failure",flush=True)
+                        package=writer.revise(package,candidate,str(issue))
             dump(out/"candidate.json",candidate)
+            dump(out/"sources.json",[{k:s[k] for k in ("id","title","url","publisher","domain","primary")}
+                 | {"evidence_sha256":hashlib.sha256(s["excerpt"].encode()).hexdigest()} for s in candidate["sources"]])
             dump(out/"script.json",package)
             dump(out/"evidence-check.json",verification)
             text=caption(package,candidate)
@@ -54,7 +65,7 @@ def generate(cfg,out,now,seen=(),candidate_file=None,package_file=None):
             print("Rendering neural voice, animated scenes, and subtitles",flush=True)
             media=render(package,candidate,out,cfg,now.date().isoformat())
             result={"day":now.date().isoformat(),"timezone":cfg["timezone"],"topic":candidate["title"],
-                    "topic_key":candidate["key"],"signal":candidate["signal"],"script_model":"local Qwen2.5-1.5B-Instruct Q4_K_M",
+                    "topic_key":candidate["key"],"signal":candidate["signal"],"script_model":cfg["model_name"],
                     "voice":"local Piper LJ Speech high", "caption":text,"media":media,
                     "sha256":sha256(out/"video.mp4"),"published":False,"status":"generated",
                     "generation_service_cost_usd":0,"evidence_check":verification}
@@ -108,8 +119,7 @@ def live(cfg,out,mode):
             status,ledger_sha=check_existing(buffer,github,ledger,ledger_sha,cfg,saved_day)
             results.append(status)
         github.cleanup(ledger,now,cfg["retention_days"])
-        if results:
-            github.save(cfg["state_path"],ledger,ledger_sha)
+        github.save(cfg["state_path"],ledger,ledger_sha)
         result={"status":"status_checked","posts":results,"published":any(r.get("published") for r in results)}
         dump(out/"result.json",result)
         return result

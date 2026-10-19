@@ -151,9 +151,11 @@ def render(package, candidate, out, cfg, day):
         if seconds < 1:
             raise WorkflowError("Neural voice output was too short")
         # Frame-quantize segment lengths so subtitle boundaries match the concatenated video.
-        frames=math.ceil((seconds+0.18)*cfg["fps"])
+        frames=math.ceil(max(seconds+0.18,cfg["min_seconds"]/4)*cfg["fps"])
         segment_seconds=frames/cfg["fps"]
-        cues.extend(subtitles(scene["narration"],elapsed,seconds))
+        scene_cues=subtitles(scene["narration"],elapsed,seconds)
+        scene_cues[-1]["end"]=round(elapsed+segment_seconds,3)
+        cues.extend(scene_cues)
         card_path=out/f"scene-{i+1}.png"
         card(scene,package,candidate,i,cfg,card_path,day)
         segment=out/f"segment-{i+1}.mp4"

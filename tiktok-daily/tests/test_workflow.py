@@ -160,7 +160,8 @@ class EditorialTests(unittest.TestCase):
     def test_placeholder_tags_and_production_labels_are_normalized(self):
         package,candidate=self.fixture()
         package["hashtags"]=["#Topic","#FYP","#Explained"]
-        package["scenes"][0]["title"]="Hook"
+        package["scenes"][0]["title"]="Hook:"
+        package["scenes"][0]["narration"]+=" #Gaming #Hook"
         finalize_package(package,candidate)
         self.assertIn("#GrandTheftAutoVi",package["hashtags"])
         self.assertNotIn("#Topic",package["hashtags"])

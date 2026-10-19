@@ -64,6 +64,13 @@ jobs:
           if-no-files-found: ignore
           path: |
             tiktok-daily/output/smoke/video.mp4
-            tiktok-daily/output/smoke/*.json
+            tiktok-daily/output/smoke/result.json
+            tiktok-daily/output/smoke/script.json
+            tiktok-daily/output/smoke/sources.json
+            tiktok-daily/output/smoke/evidence-check.json
+            tiktok-daily/output/smoke/media-validation.json
+            tiktok-daily/output/smoke/rejected-topics.json
+            tiktok-daily/output/smoke/error.json
+            tiktok-daily/output/smoke/preflight.json
             tiktok-daily/output/smoke/subtitles.srt
             tiktok-daily/output/smoke/caption.txt

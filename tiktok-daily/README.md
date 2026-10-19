@@ -8,8 +8,8 @@ The code lives in `tiktok-daily/` inside the connected repository. The two workf
 
 1. Research fresh Google search trends for Zambia, South Africa, and the US, and fresh Zambian/international RSS items. Each feed is independent; a failed feed is recorded. A country can have no trend results.
 2. Fetch article excerpts, require either a primary publisher or two distinct publisher domains, reject stale inputs and unrelated extracted text, and avoid topics recently used.
-3. Run **Qwen2.5-1.5B-Instruct Q4_K_M locally** on the runner to write a four-scene script, caption, and hashtags. Validate structure, length, unsupported numbers, source references, and substantial copying. Numerical survey percentages are omitted from unattended scripts and rejected by validation. Run a second local evidence check. This is a heuristic check, not a guarantee of factual accuracy.
-4. Run **Piper neural text-to-speech locally** with the LJ Speech voice. Generate original animated typography and abstract graphics with Pillow and FFmpeg. Burn captions into the video and export an SRT.
+3. Run **Qwen2.5-7B-Instruct Q4_K_M locally** on the runner to write a four-scene script, caption, and hashtags. Validate structure, length, unsupported numbers, source references, and substantial copying. Numerical survey percentages are omitted from unattended scripts and rejected by validation. Run a second local evidence check and attempt a source-based revision if it fails. This is a heuristic check, not a guarantee of factual accuracy.
+4. Run **Piper neural text-to-speech locally** with the LJ Speech voice. Generate original animated typography and abstract graphics with Pillow and FFmpeg. Burn captions into the video and export an SRT. Short scripts use reading pauses so every video still lasts at least 20 seconds; the last subtitle stays visible during each pause.
 5. Verify a complete **1080×1920 H.264/AAC MP4**, decode the whole file, and enforce a 20–45 second duration and 50 MB cap.
 6. Publish the MP4 as a public GitHub Release asset with a stable URL. Buffer requires public media hosting; an Actions artifact download URL would require authentication and is unsuitable.
 7. Checkpoint the date and caption into `automation-state/ledger.json` before sending the **current Buffer GraphQL `createPost` mutation**. Request automatic publishing and set TikTok's `isAiGenerated` flag.
@@ -25,7 +25,7 @@ Publishing is gated by the repository variable `AUTOPUBLISH_ENABLED=true`. A che
 2. In Buffer's API settings, create the single free API key. Enter it directly as a GitHub Actions repository secret named `BUFFER_API_KEY`. Never paste a token into an issue, source file, or chat.
 3. Run the workflow in **preflight** mode. Its output lists TikTok channel IDs and connection state. Put the intended ID in the GitHub Actions repository variable `BUFFER_TIKTOK_CHANNEL_ID`.
 4. Run **preview** and review its video, source evidence, and caption. Run **preflight** again to verify the selected channel.
-5. Pause the existing ChatGPT task **Daily TikTok Trend Content**, ID `6ad636b4ba7c819183b7311ca2a9d4eb`, when activating the replacement. It currently produces only a content package at 08:00 Africa/Lusaka. Do not create a second ChatGPT daily task.
+5. Pause the existing ChatGPT task **Daily TikTok Trend Content**, when activating the replacement. It currently produces only a content package at 08:00 Africa/Lusaka. Do not create a second ChatGPT daily task.
 6. Set `AUTOPUBLISH_ENABLED` to `true`. The next daily run will generate and schedule a post. A manual **live** run targets today and publishes later today if 08:00 has passed. Do not run live with a test video unless you intend that video to be public.
 7. Verify the later **status** run reports `sent` and records the TikTok URL before considering end-to-end publishing tested.
 
@@ -44,7 +44,7 @@ OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 python -m tiktok_daily preview
 python -m unittest discover -s tests -v
 ```
 
-The first model download is approximately 1.23 GB. Model URLs are pinned to immutable revisions and verified with SHA-256. Models and Python wheels are cached by Actions. There is no hosted AI inference, OpenAI API key, paid API fallback, or trial-credit dependency.
+The first model download is approximately 4.80 GB. The standard public runner has enough memory; allow at least 8 GB RAM for local use. This download runs on GitHub, not your phone. Model URLs are pinned to immutable revisions and verified with SHA-256. Models and Python wheels are cached by Actions. There is no hosted AI inference, OpenAI API key, paid API fallback, or trial-credit dependency.
 
 For a repeatable render-only preview, use `--candidate path/to/candidate.json --package path/to/script.json`. Recorded evidence and supplied scripts are explicitly blocked in live mode.
 
@@ -53,7 +53,7 @@ For a repeatable render-only preview, use `--candidate path/to/candidate.json --
 | Component | Implementation | Limit or account requirement |
 | --- | --- | --- |
 | Scheduling and compute | Standard Ubuntu GitHub Actions runner in a public repository | Private repositories are rejected in live mode; no larger/GPU runners |
-| Scripts | Local Qwen model | Smaller model; scripts can fail validation or contain errors despite checks |
+| Scripts | Local Qwen model | Local model; scripts can fail validation or contain errors despite checks |
 | Voice | Local Piper model | English voice; Zambian names may be mispronounced |
 | Video | Pillow and FFmpeg | Motion graphics, not photorealistic AI footage or licensed TikTok clips |
 | Subtitles | Generated from narration | Scene timing is exact; word-group timing is estimated |
@@ -61,7 +61,7 @@ For a repeatable render-only preview, use `--candidate path/to/candidate.json --
 | Media hosting | Public GitHub Release assets | Generated videos are public before TikTok publication; pending assets are retained |
 | Buffer API | Buffer Free | Currently 1 key, 100 calls/15 minutes, 250/day, 3,000/30 days |
 | Buffer queue | One post added daily | Free plan has 10 queued posts/channel at a time, not 10 per month |
-| Audit artifacts | Actions artifacts retained for 2 days | Only the final video, subtitles, and small JSON/text files are uploaded |
+| Audit artifacts | Actions artifacts retained for 2 days | Only the final video, subtitles, original script, source links/hashes, and small status files are uploaded; internal article excerpts are excluded |
 
 Native TikTok trending sounds, stickers, polls, and certain effects require finishing the post inside TikTok. This pipeline uses its original narration and graphics to stay compatible with automatic publishing. No copyrighted songs or other creators' videos are downloaded.
 
@@ -77,7 +77,7 @@ If a post is scheduled but does not send, inspect Buffer's error, reconnect the 
 
 ## Validation status
 
-Local regression checks cover timezone conversion, date rollover, stale/future dates, Buffer GraphQL payloads, errors, channel eligibility, delivery status, duplicate prevention after ambiguous network failure, captions, hashtag cleanup, and statistic restrictions. A real local video was generated and decoded. A manual review caught a survey-population error that the small model had approved; that run was rejected for delivery, and a stricter editorial rule was added. The model evidence check is not independent factual verification.
+Local regression checks cover timezone conversion, date rollover, stale/future dates, Buffer GraphQL payloads, errors, channel eligibility, delivery status, duplicate prevention after ambiguous network failure, captions, hashtag cleanup, and statistic restrictions. A real local video was generated and decoded. An early 1.5B-model test missed a survey-population error; that run was rejected for delivery. The workflow was upgraded to 7B, percentage claims were blocked, and text cleanup and a source-wording revision pass were added. The model evidence check is not independent factual verification.
 
 GitHub Actions was triggered on the implementation branch; a queued run is not a passing run. Buffer credentials are not available, so no real Buffer submission or TikTok publication has occurred. The existing ChatGPT task is still enabled until activation.
 
@@ -89,7 +89,7 @@ GitHub Actions was triggered on the implementation branch; a queued run is not a
 - [Buffer media hosting requirements](https://developers.buffer.com/guides/hosting-media.html)
 - [Buffer Free limits](https://buffer.com/pricing)
 - [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
-- [Qwen model, Apache-2.0](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF)
+- [Qwen model, Apache-2.0](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF)
 - [Piper, GPL-3.0-or-later](https://github.com/OHF-Voice/piper1-gpl)
 - [LJ Speech voice model card](https://huggingface.co/rhasspy/piper-voices/blob/c10ece1aade47bb51c153c893d14e5bf8e5b7117/en/en_US/ljspeech/high/MODEL_CARD)
 

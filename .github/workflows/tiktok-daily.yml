@@ -106,6 +106,13 @@ jobs:
           if-no-files-found: ignore
           path: |
             tiktok-daily/output/latest/video.mp4
-            tiktok-daily/output/latest/*.json
+            tiktok-daily/output/latest/result.json
+            tiktok-daily/output/latest/script.json
+            tiktok-daily/output/latest/sources.json
+            tiktok-daily/output/latest/evidence-check.json
+            tiktok-daily/output/latest/media-validation.json
+            tiktok-daily/output/latest/rejected-topics.json
+            tiktok-daily/output/latest/error.json
+            tiktok-daily/output/latest/preflight.json
             tiktok-daily/output/latest/caption.txt
             tiktok-daily/output/latest/subtitles.srt
