@@ -12,7 +12,7 @@ from tiktok_daily.common import WorkflowError, config, due_time
 from tiktok_daily.publishing import Buffer, GitHub, post_summary, public_media_check
 from tiktok_daily.research import is_fresh, parse_trends
 from tiktok_daily.video import subtitles, timestamp
-from tiktok_daily.writer import validate_package, finalize_package
+from tiktok_daily.writer import Writer, validate_package, finalize_package
 from tiktok_daily.__main__ import live
 
 
@@ -145,6 +145,13 @@ class SubtitleTests(unittest.TestCase):
 
 
 class EditorialTests(unittest.TestCase):
+    def test_an_open_question_is_not_treated_as_a_factual_assertion(self):
+        writer=Writer.__new__(Writer)
+        package={"scenes":[{"title":"Your view","narration":"Is fictional romance real infidelity? What do you think?","source_ids":["1"]}]}
+        with patch.object(writer,"json",side_effect=AssertionError("No factual assertion to send")):
+            result=writer.verify(package,{"sources":[]})
+        self.assertTrue(result["supported"])
+
     def fixture(self):
         candidate={"title":"Grand Theft Auto VI", "sources":[{"id":"1","title":"Gaming relationships",
             "excerpt":"Some respondents say that forming romantic relationships with fictional characters can create difficulties between real partners. The survey asked adults about their opinions."}]}
