@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from tiktok_daily.common import WorkflowError, config, due_time, json_request
 from tiktok_daily.publishing import Buffer, GitHub, post_summary, public_media_check
-from tiktok_daily.research import is_fresh, parse_trends, parse_news, primary_source, source_excerpt
+from tiktok_daily.research import is_fresh, parse_trends, parse_news, primary_source, source_excerpt, research, enrich
 from tiktok_daily.video import subtitles, timestamp
 from tiktok_daily.writer import Writer, validate_package, finalize_package
 from tiktok_daily.__main__ import live, generate
@@ -196,6 +196,32 @@ class SubtitleTests(unittest.TestCase):
 
 
 class ResearchTests(unittest.TestCase):
+    def test_usable_primary_account_takes_priority_over_secondary_headlines(self):
+        primary={"url":"https://www.nasa.gov/story/","primary":True}
+        secondary={"url":"https://example.com/story/","primary":False}
+        candidate={"title":"NASA simulation","sources":[secondary,primary]}
+        extracted={**primary,"domain":"www.nasa.gov","excerpt":"The NASA simulation takes place in a habitat on Earth."}
+        with patch("tiktok_daily.research.source_excerpt",return_value=extracted) as fetch:
+            result=enrich(candidate)
+        fetch.assert_called_once_with(primary)
+        self.assertEqual(result["sources"],[{**extracted,"id":"1"}])
+
+    def test_primary_trend_precedes_secondary_trend_with_same_region_priority(self):
+        cfg=config();cfg["trend_geos"]=["US"]
+        cfg["news_feeds"]=[f for f in cfg["news_feeds"] if f["primary"]]
+        def item(title,url,date):
+            return f'''<item><title>{title}</title><pubDate>{date}</pubDate>
+              <ht:news_item><ht:news_item_title>{title}</ht:news_item_title>
+              <ht:news_item_url>{url}</ht:news_item_url><ht:news_item_source>Publisher</ht:news_item_source>
+              </ht:news_item></item>'''
+        xml='<rss xmlns:ht="https://trends.google.com/trending/rss"><channel>'
+        xml+=item("NASA","https://www.nasa.gov/story/","Tue, 20 Oct 2026 04:00:00 GMT")
+        xml+=item("Football","https://example.com/story/","Tue, 20 Oct 2026 05:00:00 GMT")
+        xml+='</channel></rss>'
+        with patch("tiktok_daily.research.request",side_effect=lambda url,**kw:xml.encode() if 'trends.google.com' in url else b'<rss><channel/></rss>'):
+            candidates,_=research(cfg,datetime(2026,10,20,6,tzinfo=timezone.utc))
+        self.assertEqual(candidates[0]["title"],"NASA")
+
     def test_trend_primary_publisher_uses_host_not_display_name(self):
         cfg=config()
         self.assertTrue(primary_source("https://www.nasa.gov/science/story/",cfg))
@@ -263,6 +289,16 @@ class EditorialTests(unittest.TestCase):
         package["scenes"][0]["narration"]="A future mission is planned — it has not been launched."
         finalize_package(package,candidate)
         self.assertIn("it has not been launched",package["scenes"][0]["narration"])
+
+    def test_simulation_crew_are_not_promoted_to_astronauts(self):
+        package,candidate=self.fixture()
+        candidate["sources"][0]["excerpt"]="Four crew members worked inside an Earth-based simulated Mars habitat."
+        package["scenes"][0]["narration"]="Four astronauts spent a year in an isolated habitat."
+        with self.assertRaisesRegex(WorkflowError,"role stated"):
+            validate_package(package,candidate)
+        package["scenes"][0]["narration"]="The crew worked on a Martian surface."
+        with self.assertRaisesRegex(WorkflowError,"simulation qualifier"):
+            validate_package(package,candidate)
 
     def fixture(self):
         candidate={"title":"Grand Theft Auto VI", "sources":[{"id":"1","title":"Gaming relationships",

@@ -163,6 +163,7 @@ def research(cfg, now, seen=()):
     candidates = sorted(unique.values(), key=lambda c: (
         c["region"] == "ZM" if prefer_zambia else c["region"] != "ZM",
         c["traffic"] is not None,
+        any(s.get("primary") for s in c["sources"]),
         date_value(c["published"])), reverse=True)
     return candidates[:16], diagnostics
 
@@ -170,7 +171,7 @@ def research(cfg, now, seen=()):
 def enrich(candidate):
     verified = []
     rejected = []
-    for source in candidate["sources"]:
+    for source in sorted(candidate["sources"], key=lambda s: bool(s.get("primary")), reverse=True):
         try:
             extracted=source_excerpt(source)
             topic_words={w for w in normalise(candidate["title"]).split() if len(w)>=4}
@@ -179,6 +180,11 @@ def enrich(candidate):
                 rejected.append({"url": source["url"], "reason": "Extracted text did not match the topic"})
                 continue
             verified.append(extracted)
+            if extracted.get("primary"):
+                # Prefer the originating publisher's account over looser secondary
+                # headlines. One accessible first-party source satisfies this policy.
+                verified = [extracted]
+                break
         except WorkflowError as exc:
             rejected.append({"url": source.get("url"), "reason": str(exc)})
     primary = any(s.get("primary") for s in verified)
