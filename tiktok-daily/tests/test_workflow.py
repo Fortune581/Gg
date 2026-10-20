@@ -300,6 +300,13 @@ class EditorialTests(unittest.TestCase):
         with self.assertRaisesRegex(WorkflowError,"simulation qualifier"):
             validate_package(package,candidate)
 
+    def test_durations_are_omitted_even_when_the_number_occurs_in_evidence(self):
+        package,candidate=self.fixture()
+        candidate["sources"][0]["excerpt"]+=" He made his first start in 18 months and scored."
+        package["scenes"][0]["narration"]="The player scored after 18 months."
+        with self.assertRaisesRegex(WorkflowError,"numerical durations"):
+            validate_package(package,candidate)
+
     def fixture(self):
         candidate={"title":"Grand Theft Auto VI", "sources":[{"id":"1","title":"Gaming relationships",
             "excerpt":"Some respondents say that forming romantic relationships with fictional characters can create difficulties between real partners. The survey asked adults about their opinions."}]}
