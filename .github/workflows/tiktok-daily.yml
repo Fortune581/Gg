@@ -1,0 +1,118 @@
+name: Daily TikTok video
+
+on:
+  schedule:
+    # Africa/Lusaka is UTC+2: start 07:17, schedule the finished video for 08:00.
+    - cron: '17 5 * * *'
+    # Check Buffer's final delivery at 08:47 Lusaka, without creating another video.
+    - cron: '47 6 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'preview generates a real video; live schedules one; status checks delivery'
+        type: choice
+        options: [preview, preflight, live, status]
+        default: preview
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-tiktok
+  cancel-in-progress: false
+
+jobs:
+  daily:
+    # Public repositories and standard runners only. No paid inference or services.
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 42
+    defaults:
+      run:
+        working-directory: tiktok-daily
+    env:
+      CC: gcc
+      CXX: g++
+      CMAKE_BUILD_PARALLEL_LEVEL: '2'
+      CMAKE_ARGS: '-DGGML_NATIVE=OFF'
+      OMP_NUM_THREADS: '2'
+      OPENBLAS_NUM_THREADS: '2'
+      TIKTOK_MODELS_DIR: ${{ github.workspace }}/.models
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Select run mode
+        id: mode
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          REQUESTED_MODE: ${{ inputs.mode }}
+          ENABLED: ${{ vars.AUTOPUBLISH_ENABLED }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            selected="$REQUESTED_MODE"
+          elif [ "$EVENT_SCHEDULE" = "47 6 * * *" ]; then
+            selected="status"
+          else
+            selected="live"
+          fi
+          if [ "$selected" = "live" ] || [ "$selected" = "status" ]; then
+            if [ "$ENABLED" != "true" ]; then
+              echo 'Publishing is not activated. Finish Buffer authorization and migration first.'
+              echo 'run=false' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "mode=$selected" >> "$GITHUB_OUTPUT"
+          echo 'run=true' >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v5
+        if: steps.mode.outputs.run == 'true'
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tiktok-daily/requirements.txt
+      - name: Install media tools
+        if: steps.mode.outputs.run == 'true' && (steps.mode.outputs.mode == 'live' || steps.mode.outputs.mode == 'preview')
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg fonts-dejavu-core build-essential cmake
+      - name: Restore local models
+        if: steps.mode.outputs.run == 'true' && (steps.mode.outputs.mode == 'live' || steps.mode.outputs.mode == 'preview')
+        uses: actions/cache@v4
+        with:
+          path: .models
+          key: tiktok-local-models-${{ hashFiles('tiktok-daily/assets.lock.json') }}
+      - name: Install Python dependencies
+        if: steps.mode.outputs.run == 'true' && (steps.mode.outputs.mode == 'live' || steps.mode.outputs.mode == 'preview')
+        run: python -m pip install -r requirements.txt
+      - name: Verify and download models
+        if: steps.mode.outputs.run == 'true' && (steps.mode.outputs.mode == 'live' || steps.mode.outputs.mode == 'preview')
+        run: python scripts/download_models.py
+      - name: Generate, schedule, or check
+        if: steps.mode.outputs.run == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          BUFFER_TIKTOK_CHANNEL_ID: ${{ vars.BUFFER_TIKTOK_CHANNEL_ID }}
+          RUN_MODE: ${{ steps.mode.outputs.mode }}
+        run: python -m tiktok_daily "$RUN_MODE" --output output/latest
+      - name: Keep the video and audit output for two days
+        if: always() && steps.mode.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiktok-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 2
+          if-no-files-found: ignore
+          path: |
+            tiktok-daily/output/latest/video.mp4
+            tiktok-daily/output/latest/result.json
+            tiktok-daily/output/latest/script.json
+            tiktok-daily/output/latest/sources.json
+            tiktok-daily/output/latest/evidence-check.json
+            tiktok-daily/output/latest/media-validation.json
+            tiktok-daily/output/latest/rejected-topics.json
+            tiktok-daily/output/latest/error.json
+            tiktok-daily/output/latest/preflight.json
+            tiktok-daily/output/latest/caption.txt
+            tiktok-daily/output/latest/subtitles.srt
