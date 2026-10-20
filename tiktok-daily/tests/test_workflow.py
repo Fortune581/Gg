@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from tiktok_daily.common import WorkflowError, config, due_time, json_request
 from tiktok_daily.publishing import Buffer, GitHub, post_summary, public_media_check
 from tiktok_daily.research import is_fresh, parse_trends, parse_news, primary_source, source_excerpt, research, enrich
-from tiktok_daily.video import subtitles, timestamp
+from tiktok_daily.video import subtitles, timestamp, story_visual_kind
 from tiktok_daily.writer import Writer, validate_package, finalize_package
 from tiktok_daily.__main__ import live, generate
 
@@ -195,6 +195,14 @@ class SubtitleTests(unittest.TestCase):
         self.assertEqual(timestamp(61.999),"00:01:01,999")
 
 
+class VisualTests(unittest.TestCase):
+    def test_story_visual_kind_follows_scene_subject(self):
+        candidate={"title":"UNC settlement with the Trump administration"}
+        self.assertEqual(story_visual_kind({"title":"Settlement reached","narration":"Civil rights investigations ended."},candidate),"rights")
+        self.assertEqual(story_visual_kind({"title":"New roles","narration":"An administrator was appointed."},candidate),"people")
+        self.assertEqual(story_visual_kind({"title":"Funding maintained","narration":"Federal grants remain available."},candidate),"funding")
+
+
 class ResearchTests(unittest.TestCase):
     def test_usable_primary_account_takes_priority_over_secondary_headlines(self):
         primary={"url":"https://www.nasa.gov/story/","primary":True}
@@ -325,7 +333,8 @@ class EditorialTests(unittest.TestCase):
         package["scenes"][0]["title"]="Hook:"
         package["scenes"][0]["narration"]+=" #Gaming #Hook"
         finalize_package(package,candidate)
-        self.assertIn("#GrandTheftAutoVi",package["hashtags"])
+        self.assertIn("#GrandTheftAutoVI",package["hashtags"])
+        self.assertTrue(all(len(tag)<=24 for tag in package["hashtags"]))
         self.assertNotIn("#Topic",package["hashtags"])
         self.assertNotIn("#FYP",package["hashtags"])
         self.assertEqual(package["scenes"][0]["title"],"The story")
