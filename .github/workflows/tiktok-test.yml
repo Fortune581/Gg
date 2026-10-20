@@ -22,7 +22,7 @@ jobs:
       - run: python -m unittest discover -s tests -v
 
   real-video:
-    if: github.event.repository.private == false && github.event_name == 'push' && github.ref_name == 'tiktok-daily-automation'
+    if: github.event.repository.private == false && (github.ref_name == 'tiktok-daily-automation' || github.head_ref == 'tiktok-daily-automation')
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     defaults:
