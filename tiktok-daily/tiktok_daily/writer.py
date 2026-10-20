@@ -82,7 +82,7 @@ Use 3-5 relevant hashtags including #Zambia. Avoid #FYP or promises of virality.
                 "type":"object","properties":{"title":{"type":"string","minLength":5,"maxLength":55},
                 "beat":{"type":"string","enum":list(STORY_BEATS)},
                 "visual":{"type":"string","enum":list(VISUALS)},
-                "narration":{"type":"string","minLength":100,"maxLength":400,"pattern":r"^[^ ]+( [^ ]+){21,27}$"},
+                "narration":{"type":"string","minLength":100,"maxLength":400,"pattern":r'^[^"\\\x00-\x20]+( [^"\\\x00-\x20]+){21,27}$'},
                 "source_ids":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"string","enum":[s["id"] for s in candidate["sources"]]}}},
                 "required":["beat","title","narration","source_ids","visual"],"additionalProperties":False}},
             "caption":{"type":"string","minLength":20,"maxLength":200},
