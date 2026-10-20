@@ -86,6 +86,66 @@ def wrap_pixels(draw, text, face, width):
     return lines
 
 
+def story_visual_kind(scene, candidate):
+    words = " ".join((candidate.get("title", ""), scene.get("title", ""), scene.get("narration", ""))).lower()
+    if any(x in words for x in ("funding", "grant", "budget", "money", "finance")): return "funding"
+    if any(x in words for x in ("appoint", "administrator", "staff", "role", "official")): return "people"
+    if any(x in words for x in ("settlement", "investigation", "civil rights", "agreement", "court", "law")): return "rights"
+    if any(x in words for x in ("university", "school", "college", "campus", "student")): return "campus"
+    if any(x in words for x in ("nasa", "space", "planet", "spacecraft", "science")): return "science"
+    if any(x in words for x in ("football", "soccer", "rugby", "sport", "match")): return "sport"
+    if any(x in words for x in ("phone", "technology", "tech", "artificial intelligence")): return "technology"
+    return "spotlight"
+
+
+def draw_story_icon(draw, kind, cx, cy, accent):
+    ink, dark = "#dce9e8", "#17343d"
+    if kind == "rights":
+        draw.rounded_rectangle((cx-116,cy-132,cx+116,cy+132),radius=20,fill=dark,outline=accent,width=7)
+        draw.polygon([(cx+48,cy-132),(cx+116,cy-64),(cx+48,cy-64)],fill="#244750")
+        for y in (cy-38,cy-4,cy+30): draw.rounded_rectangle((cx-76,y,cx+61,y+10),radius=5,fill=ink)
+        draw.ellipse((cx+22,cy+63,cx+102,cy+143),fill=accent)
+        draw.line((cx+43,cy+100,cx+59,cy+116,cx+86,cy+82),fill=dark,width=9)
+    elif kind == "campus":
+        draw.polygon([(cx-190,cy-72),(cx,cy-190),(cx+190,cy-72)],fill=accent)
+        draw.rectangle((cx-168,cy-68,cx+168,cy+151),fill=dark,outline=ink,width=5)
+        draw.rectangle((cx-198,cy+145,cx+198,cy+177),fill=accent)
+        for x in (cx-112,cx-38,cx+38,cx+112): draw.rounded_rectangle((x-19,cy-38,x+19,cy+123),radius=18,fill=ink)
+        draw.rectangle((cx-36,cy+66,cx+36,cy+145),fill=accent)
+    elif kind == "people":
+        draw.ellipse((cx-51,cy-145,cx+51,cy-43),fill=accent)
+        draw.rounded_rectangle((cx-98,cy-24,cx+98,cy+157),radius=70,fill=accent)
+        draw.rounded_rectangle((cx+75,cy+22,cx+194,cy+151),radius=18,fill=dark,outline=ink,width=5)
+        draw.line((cx+100,cy+63,cx+169,cy+63),fill=ink,width=7)
+        draw.line((cx+100,cy+91,cx+158,cy+91),fill=ink,width=7)
+    elif kind == "funding":
+        for x,top,count in ((cx-168,cy+38,2),(cx-45,cy-8,3),(cx+78,cy-62,4)):
+            for row in range(count):
+                y=top-row*39; draw.ellipse((x,y,x+92,y+34),fill=accent if row==count-1 else "#538071",outline=ink,width=3)
+        draw.line((cx-105,cy-118,cx-3,cy-156,cx+70,cy-112,cx+164,cy-188),fill=ink,width=11)
+        draw.polygon([(cx+164,cy-188),(cx+125,cy-181),(cx+159,cy-145)],fill=ink)
+    elif kind == "science":
+        draw.ellipse((cx-173,cy-70,cx+173,cy+70),outline=accent,width=8)
+        draw.ellipse((cx-70,cy-173,cx+70,cy+173),outline=ink,width=7)
+        draw.ellipse((cx-140,cy-140,cx+140,cy+140),outline="#5c858b",width=7)
+        draw.ellipse((cx-28,cy-28,cx+28,cy+28),fill=accent)
+    elif kind == "sport":
+        draw.ellipse((cx-160,cy-160,cx+160,cy+160),fill=dark,outline=accent,width=10)
+        draw.polygon([(cx,cy-70),(cx+66,cy-23),(cx+41,cy+55),(cx-41,cy+55),(cx-66,cy-23)],outline=ink,fill="#244750")
+        for dx,dy in ((-145,-75),(145,-75),(-90,135),(90,135)): draw.line((cx+dx,cy+dy,cx+dx//2,cy+dy//2),fill=ink,width=7)
+    elif kind == "technology":
+        draw.rounded_rectangle((cx-116,cy-186,cx+116,cy+186),radius=32,fill=dark,outline=accent,width=9)
+        draw.rounded_rectangle((cx-78,cy-132,cx+78,cy+103),radius=12,fill="#254751")
+        draw.ellipse((cx-12,cy+129,cx+12,cy+153),fill=ink)
+        for y in (-94,-25,44): draw.line((cx-54,cy+y,cx+54,cy+y),fill=accent,width=7)
+    else:
+        draw.ellipse((cx-164,cy-164,cx+164,cy+164),fill=dark,outline=accent,width=8)
+        pts=[]
+        for i in range(16):
+            r=150 if i%2==0 else 68; a=-math.pi/2+i*math.pi/8; pts.append((cx+math.cos(a)*r,cy+math.sin(a)*r))
+        draw.polygon(pts,fill=accent); draw.ellipse((cx-26,cy-26,cx+26,cy+26),fill=dark)
+
+
 def card(scene, package, candidate, index, cfg, target, day):
     from PIL import Image, ImageDraw
     w,h = cfg["width"],cfg["height"]
@@ -99,7 +159,7 @@ def card(scene, package, candidate, index, cfg, target, day):
             draw.ellipse((x,y,x+3,y+3),fill="#27404a")
     accent = ["#83e8b2", "#ffbc72", "#8bd9ef", "#cfb5fb"][index]
     draw.rounded_rectangle((72,104,340,164),radius=30,fill="#173b3b")
-    draw.text((95,117),cfg["brand"],font=font(26,True),fill="#b4f2d3")
+    draw.text((95,117),"DAILY EXPLAINER",font=font(26,True),fill="#b4f2d3")
     draw.text((685,122),day,font=font(25),fill="#a0b3b8")
     draw.text((75,226),candidate["signal_label"],font=font(27,True),fill=accent)
     display_title=package["title"] if index==0 else scene["title"]
@@ -110,19 +170,17 @@ def card(scene, package, candidate, index, cfg, target, day):
         lines=wrap_pixels(draw,display_title,titlefont,810)
     for j,line in enumerate(lines):
         draw.text((72,315+j*102),line,font=titlefont,fill="#f5faf6")
-    # An original abstract orbit illustration: no stock footage or licensing dependency.
-    cx,cy=450,1040
-    for r in [80,135,190]:
-        draw.ellipse((cx-r,cy-r,cx+r,cy+r),outline="#36545c",width=3)
-    for i in range(28):
-        angle=i*math.tau/28 + index*.22
-        radius=140+(i%3)*24
-        x=cx+math.cos(angle)*radius
-        y=cy+math.sin(angle)*radius
-        dot=5+(i%4)*3
-        draw.ellipse((x-dot,y-dot,x+dot,y+dot),fill=accent if i%3==index%3 else "#41616a")
-    draw.rounded_rectangle((cx-102,cy-77,cx+102,cy+77),radius=26,fill="#19343d",outline=accent,width=2)
-    draw.text((cx-43,cy-58),f"0{index+1}",font=font(85,True),fill=accent)
+    # Topic-matched vector art keeps the original visuals distinct without stock footage.
+    draw.rounded_rectangle((92,760,888,1225),radius=42,fill="#102a34",outline="#274b55",width=3)
+    draw.text((132,792),f"0{index+1}  /  04",font=font(25,True),fill=accent)
+    kind=story_visual_kind(scene,candidate)
+    labels={"rights":"CIVIL RIGHTS","campus":"EDUCATION","people":"LEADERSHIP","funding":"FUNDING","science":"SCIENCE","sport":"SPORT","technology":"TECHNOLOGY","spotlight":"THE STORY"}
+    label_font=font(20,True); label=labels[kind]
+    draw.text((842-draw.textlength(label,font=label_font),797),label,font=label_font,fill="#a4bbc1")
+    cx,cy=490,1002
+    draw.ellipse((cx-204,cy-204,cx+204,cy+204),fill="#0b2028",outline="#1d3d47",width=3)
+    draw_story_icon(draw,kind,cx,cy,accent)
+    draw.text((132,1168),"THE STORY AT A GLANCE",font=font(22,True),fill="#93aeb5")
     draw.text((75,1284),"THE DAILY EXPLAINER",font=font(23,True),fill="#93aeb5")
     # Subtitle space is kept clear of TikTok's right-side controls and bottom caption.
     draw.rounded_rectangle((65,1360,915,1550),radius=24,fill="#102a34")
