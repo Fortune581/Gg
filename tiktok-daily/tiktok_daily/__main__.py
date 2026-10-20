@@ -65,6 +65,9 @@ def generate(cfg,out,now,seen=(),candidate_file=None,package_file=None):
             dump(out/"evidence-check.json",verification)
             text=caption(package,candidate)
             (out/"caption.txt").write_text(text+"\n")
+            if writer is not None:
+                writer.model.close()
+                writer=None
             print("Rendering neural voice, animated scenes, and subtitles",flush=True)
             media=render(package,candidate,out,cfg,now.date().isoformat())
             result={"day":now.date().isoformat(),"timezone":cfg["timezone"],"topic":candidate["title"],

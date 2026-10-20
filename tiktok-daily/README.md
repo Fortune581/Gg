@@ -25,7 +25,7 @@ Publishing is gated by the repository variable `AUTOPUBLISH_ENABLED=true`. A che
 2. In Buffer's API settings, create the single free API key. Enter it directly as a GitHub Actions repository secret named `BUFFER_API_KEY`. Never paste a token into an issue, source file, or chat.
 3. Run the workflow in **preflight** mode. Its output lists TikTok channel IDs and connection state. Put the intended ID in the GitHub Actions repository variable `BUFFER_TIKTOK_CHANNEL_ID`.
 4. Run **preview** and review its video, source evidence, and caption. Run **preflight** again to verify the selected channel.
-5. Pause the existing ChatGPT task **Daily TikTok Trend Content**, when activating the replacement. It currently produces only a content package at 08:00 Africa/Lusaka. Do not create a second ChatGPT daily task.
+5. Pause the existing ChatGPT task **Daily TikTok Content Check**, when activating the replacement. It currently produces only a content package at 08:00 Africa/Lusaka. Do not create a second ChatGPT daily task.
 6. Set `AUTOPUBLISH_ENABLED` to `true`. The next daily run will generate and schedule a post. A manual **live** run targets today and publishes later today if 08:00 has passed. Do not run live with a test video unless you intend that video to be public.
 7. Verify the later **status** run reports `sent` and records the TikTok URL before considering end-to-end publishing tested.
 
@@ -44,7 +44,7 @@ OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 python -m tiktok_daily preview
 python -m unittest discover -s tests -v
 ```
 
-The first model download is approximately 4.80 GB. The standard public runner has enough memory; allow at least 8 GB RAM for local use. This download runs on GitHub, not your phone. Model URLs are pinned to immutable revisions and verified with SHA-256. Models and Python wheels are cached by Actions. There is no hosted AI inference, OpenAI API key, paid API fallback, or trial-credit dependency.
+The first model download is approximately 4.80 GB. The standard public runner has enough memory; allow at least 8 GB RAM for local use. This download runs on GitHub, not your phone. Model URLs are pinned to immutable revisions and verified with SHA-256. The model uses a 3,072-token context to limit memory on 8 GB machines and is closed before Piper/video rendering starts. Models and Python wheels are cached by Actions. There is no hosted AI inference, OpenAI API key, paid API fallback, or trial-credit dependency.
 
 For a repeatable render-only preview, use `--candidate path/to/candidate.json --package path/to/script.json`. Recorded evidence and supplied scripts are explicitly blocked in live mode.
 
@@ -79,7 +79,7 @@ If a post is scheduled but does not send, inspect Buffer's error, reconnect the 
 
 All **28 regression tests pass locally**, including the source fallback and first-party recognition errors that caused the failed Actions video job. Tests also cover date rollover, the Buffer payload, ambiguous-submission duplicate prevention, later-post status recovery, missing API objects, invalid JSON responses, captions and question premises, preservation of narration qualifications, and unsupported astronaut or Mars-surface claims about simulation crews. The local AI evidence check remains heuristic.
 
-A complete fresh-research Actions run passed on the source-fix commit (`5d0a910`), including local AI, neural voice, subtitles, video rendering, and full-file decoding. The final wording guards and first-party ranking are being checked in a further run. Buffer authorization and deployment approval are still required before activation; no real Buffer submission or TikTok publication has occurred. The existing ChatGPT task remains enabled until the replacement is activated. Never treat a passing unit-test job as proof that the video job or TikTok delivery passed.
+A complete fresh-research Actions run passed on the source-fix commit (`5d0a910`), including local AI, neural voice, subtitles, video rendering, and full-file decoding. A separate fresh-research Actions job checks the implementation; consult the [latest branch runs](https://github.com/Fortune581/Gg/actions?query=branch%3Atiktok-daily-automation) for the current result. Buffer authorization and deployment approval are still required before activation; no real Buffer submission or TikTok publication has occurred. The existing ChatGPT task remains enabled until the replacement is activated. Never treat a passing unit-test job as proof that the video job or TikTok delivery passed.
 
 ## Sources and licenses
 

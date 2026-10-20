@@ -8,7 +8,7 @@ class Writer:
     def __init__(self, cfg):
         from llama_cpp import Llama
         self.model = Llama(model_path=str(model_dir() / cfg["model_file"]),
-                           n_ctx=4096, n_threads=cfg["model_threads"], n_threads_batch=cfg["model_threads"],
+                           n_ctx=3072, n_threads=cfg["model_threads"], n_threads_batch=cfg["model_threads"],
                            verbose=False, seed=42)
 
     def json(self, system, prompt, schema=None, max_tokens=1200):
