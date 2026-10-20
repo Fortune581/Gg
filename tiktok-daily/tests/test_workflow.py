@@ -11,8 +11,8 @@ from zoneinfo import ZoneInfo
 from tiktok_daily.common import WorkflowError, config, due_time, json_request
 from tiktok_daily.publishing import Buffer, GitHub, post_summary, public_media_check
 from tiktok_daily.research import is_fresh, parse_trends, parse_news, primary_source, source_excerpt, research, enrich
-from tiktok_daily.video import subtitles, timestamp, story_visual_kind
-from tiktok_daily.writer import Writer, validate_package, finalize_package
+from tiktok_daily.video import subtitles, timestamp, story_visual_kind, segment_duration, probe
+from tiktok_daily.writer import Writer, validate_package, finalize_package, STORY_BEATS
 from tiktok_daily.__main__ import live, generate
 
 
@@ -203,6 +203,20 @@ class VisualTests(unittest.TestCase):
         self.assertEqual(story_visual_kind({"title":"Funding maintained","narration":"Federal grants remain available."},candidate),"funding")
 
 
+class MinuteVideoTests(unittest.TestCase):
+    def test_final_encoded_subminute_video_is_rejected(self):
+        info={"streams":[{"codec_type":"video","codec_name":"h264","width":1080,"height":1920,"pix_fmt":"yuv420p","duration":"59.9"},
+                         {"codec_type":"audio","codec_name":"aac","duration":"59.9"}],"format":{"duration":"59.9"}}
+        with patch("tiktok_daily.video.run",return_value=json.dumps(info)):
+            with self.assertRaisesRegex(WorkflowError,"duration"):
+                probe("unused.mp4",config())
+
+    def test_short_scenes_are_not_stretched_to_reach_a_minute(self):
+        seconds=segment_duration(3.1,24)
+        self.assertGreaterEqual(seconds,3.1)
+        self.assertLess(seconds,3.3)
+
+
 class ResearchTests(unittest.TestCase):
     def test_usable_primary_account_takes_priority_over_secondary_headlines(self):
         primary={"url":"https://www.nasa.gov/story/","primary":True}
@@ -319,13 +333,39 @@ class EditorialTests(unittest.TestCase):
         candidate={"title":"Grand Theft Auto VI", "sources":[{"id":"1","title":"Gaming relationships",
             "excerpt":"Some respondents say that forming romantic relationships with fictional characters can create difficulties between real partners. The survey asked adults about their opinions."}]}
         sentences=[
-            "Could your partner see a relationship in a video game as crossing a boundary in real life?",
-            "Some people have concerns when fictional romance starts to feel like a connection outside their real relationship.",
-            "The discussion is about how couples understand their boundaries when a romantic interest exists inside a game.",
-            "Would you see things the same way, or would you draw a different line for your own relationship?"]
-        package={"title":"A gaming dilemma","scenes":[{"title":"A gaming question","narration":s,"source_ids":["1"]} for s in sentences],
+            "When a game makes a fictional romance feel personal, couples can end up asking a surprisingly real question: where do their relationship boundaries sit?",
+            "The discussion starts with adults describing how they view romantic connections with game characters, rather than a claim about what every player actually does.",
+            "Some respondents said that an imagined connection could become uncomfortable for a partner, particularly when the experience starts to matter outside the screen.",
+            "That concern is about the meaning a couple gives the interaction. A fictional character and a real partner are clearly different kinds of relationship.",
+            "For the people raising concerns, the important issue is whether both partners understand the same boundary when one of them becomes invested in a game.",
+            "The source reports opinions. It does not establish that fictional romance causes problems for every couple, or tell every player how they must feel.",
+            "The story therefore leads back to a conversation between partners about what each considers acceptable, while keeping reported views separate from a universal rule.",
+            "Would a romantic storyline in a game feel harmless to you, or would the way your partner engages with that story change your answer?"]
+        titles=["A gaming dilemma","The people behind the views","When the screen feels personal","Two different relationships","Agreeing on the boundary","Opinions are not universal","A conversation between partners","Where would you draw it?"]
+        package={"title":"When fictional romance tests real boundaries","scenes":[{"beat":beat,"title":title,"narration":line,"source_ids":["1"],"visual":"technology"}
+                 for beat,title,line in zip(STORY_BEATS,titles,sentences)],
                  "caption":"Would a fictional romance change how you see your real relationship?","hashtags":["#Zambia","#Gaming","#Explained"]}
         return package,candidate
+
+    def test_old_short_package_cannot_pass_the_one_minute_story_contract(self):
+        package,candidate=self.fixture()
+        package["scenes"]=package["scenes"][:4]
+        with self.assertRaisesRegex(WorkflowError,"eight scenes"):
+            validate_package(package,candidate)
+
+    def test_story_order_and_short_or_repeated_narration_are_rejected(self):
+        package,candidate=self.fixture()
+        package["scenes"][2]["beat"]="question"
+        with self.assertRaisesRegex(WorkflowError,"Story beats"):
+            validate_package(package,candidate)
+        package,candidate=self.fixture()
+        for scene in package["scenes"]: scene["narration"]="A short sentence about this topic."
+        with self.assertRaisesRegex(WorkflowError,"170-230"):
+            validate_package(package,candidate)
+        package,candidate=self.fixture()
+        package["scenes"][3]["narration"]=package["scenes"][2]["narration"]
+        with self.assertRaisesRegex(WorkflowError,"padding"):
+            validate_package(package,candidate)
 
     def test_placeholder_tags_and_production_labels_are_normalized(self):
         package,candidate=self.fixture()

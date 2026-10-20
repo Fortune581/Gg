@@ -136,7 +136,7 @@ def source_excerpt(source):
         origin = "primary_feed_summary"
     if len(text.split()) < 35:
         raise WorkflowError(fetch_error or "Source has insufficient accessible article text")
-    return {**source, "excerpt": " ".join(text.split()[:190]), "domain": parts.hostname,
+    return {**source, "excerpt": " ".join(text.split()[:280]), "domain": parts.hostname,
             "evidence_origin": origin}
 
 
