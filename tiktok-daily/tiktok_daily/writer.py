@@ -191,7 +191,14 @@ def finalize_package(package,candidate):
         placeholders={"#zambia","#topic","#hashtag","#fyp","#viral","#trending","#hook","#caption","#details"}
         tags=list(dict.fromkeys(t for t in tags if t.lower() not in placeholders))
         words=re.findall(r"[A-Za-z0-9]+",candidate["title"])
-        topic_tag="#"+"".join(w.title() for w in words)[:32]
+        stop={"and","or","the","a","an","of","for","to","in","on","with","deal"}
+        words=[word for word in words if word.lower() not in stop]
+        parts=[]
+        for word in words:
+            token=word.upper() if len(word)<=3 else word.title()
+            if len("#"+"".join(parts)+token)>24: break
+            parts.append(token)
+        topic_tag="#"+"".join(parts) if parts else "#Explained"
         if len(topic_tag)>2 and topic_tag.lower() not in {t.lower() for t in tags}:
             tags.insert(0,topic_tag)
         if len(tags)<2:
