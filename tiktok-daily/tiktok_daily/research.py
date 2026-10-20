@@ -12,6 +12,17 @@ from .common import WorkflowError, normalise, request, topic_key
 HT = "{https://trends.google.com/trending/rss}"
 
 
+def primary_source(url, cfg):
+    """Recognize first-party publishers by HTTPS host, never by their display name."""
+    parts = urlsplit(url or "")
+    if parts.scheme != "https" or parts.username or parts.password:
+        return False
+    host = (parts.hostname or "").removeprefix("www.")
+    trusted = {(urlsplit(f["url"]).hostname or "").removeprefix("www.")
+               for f in cfg["news_feeds"] if f.get("primary")}
+    return any(host == domain or host.endswith("." + domain) for domain in trusted if domain)
+
+
 def clean(text):
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", text or ""))).strip()
 
@@ -47,7 +58,8 @@ def parse_trends(xml, geo, cfg, now):
         sources = [{"title": clean(n.findtext(HT + "news_item_title")),
                     "url": n.findtext(HT + "news_item_url"),
                     "publisher": clean(n.findtext(HT + "news_item_source")),
-                    "primary": False} for n in item.findall(HT + "news_item")]
+                    "primary": primary_source(n.findtext(HT + "news_item_url"), cfg)}
+                   for n in item.findall(HT + "news_item")]
         if not is_fresh(published, now, cfg["max_age_hours"]) or not eligible(title + " " + " ".join(s["title"] for s in sources), cfg):
             continue
         result.append({"title": title, "published": published, "region": geo,
@@ -63,7 +75,8 @@ def parse_news(xml, feed, cfg, now):
     for item in ET.fromstring(xml).findall("./channel/item"):
         title = clean(item.findtext("title"))
         published = item.findtext("pubDate")
-        if not is_fresh(published, now, cfg["max_age_hours"]) or not eligible(title, cfg):
+        context = title + " " + " ".join(feed.get("topics", []))
+        if not is_fresh(published, now, cfg["max_age_hours"]) or not eligible(context, cfg):
             continue
         summary = clean(item.findtext("description"))
         result.append({"title": title, "published": published, "region": feed["region"],
@@ -109,14 +122,22 @@ def source_excerpt(source):
     if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
         raise WorkflowError("Source must have a public HTTPS URL")
     parser = Paragraphs()
-    parser.feed(request(url, timeout=15).decode("utf-8", errors="replace"))
+    fetch_error = None
+    try:
+        parser.feed(request(url, timeout=15).decode("utf-8", errors="replace"))
+    except WorkflowError as exc:
+        fetch_error = str(exc)
     text = " ".join(parser.text)
-    # Feed summaries are useful for primary publishers whose article uses a JS shell.
+    origin = "article"
+    # A summary already retrieved from the first-party RSS feed remains usable
+    # when the linked article is unavailable. Never substitute third-party snippets.
     if len(text.split()) < 35 and source.get("primary"):
         text = source.get("feed_summary", "")
+        origin = "primary_feed_summary"
     if len(text.split()) < 35:
-        raise WorkflowError("Source has insufficient accessible article text")
-    return {**source, "excerpt": " ".join(text.split()[:190]), "domain": parts.hostname}
+        raise WorkflowError(fetch_error or "Source has insufficient accessible article text")
+    return {**source, "excerpt": " ".join(text.split()[:190]), "domain": parts.hostname,
+            "evidence_origin": origin}
 
 
 def research(cfg, now, seen=()):
@@ -148,20 +169,24 @@ def research(cfg, now, seen=()):
 
 def enrich(candidate):
     verified = []
+    rejected = []
     for source in candidate["sources"]:
         try:
             extracted=source_excerpt(source)
             topic_words={w for w in normalise(candidate["title"]).split() if len(w)>=4}
             excerpt_words=set(normalise(extracted["excerpt"]).split())
             if topic_words and len(topic_words & excerpt_words)<min(2,len(topic_words)):
+                rejected.append({"url": source["url"], "reason": "Extracted text did not match the topic"})
                 continue
             verified.append(extracted)
-        except WorkflowError:
-            continue
+        except WorkflowError as exc:
+            rejected.append({"url": source.get("url"), "reason": str(exc)})
     primary = any(s.get("primary") for s in verified)
     domains = {s["domain"].removeprefix("www.") for s in verified}
     if not primary and len(domains) < 2:
-        raise WorkflowError("Need one primary publisher or two accessible independent publishers")
+        details = "; ".join(r["reason"] for r in rejected)
+        raise WorkflowError("Need one primary publisher or two accessible publisher domains"
+                            + (": " + details if details else ""))
     for i, source in enumerate(verified):
         source["id"] = str(i + 1)
     return {**candidate, "sources": verified}

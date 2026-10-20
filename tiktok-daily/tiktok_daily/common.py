@@ -49,7 +49,10 @@ def request(url, *, data=None, method=None, headers=None, timeout=25, limit=5_00
 
 
 def json_request(url, **kwargs):
-    return json.loads(request(url, **kwargs))
+    try:
+        return json.loads(request(url, **kwargs))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise WorkflowError(f"Invalid JSON response from {urllib.parse.urlsplit(url).hostname}") from None
 
 
 def now_local(cfg=None):

@@ -8,12 +8,12 @@ from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from tiktok_daily.common import WorkflowError, config, due_time
+from tiktok_daily.common import WorkflowError, config, due_time, json_request
 from tiktok_daily.publishing import Buffer, GitHub, post_summary, public_media_check
-from tiktok_daily.research import is_fresh, parse_trends
+from tiktok_daily.research import is_fresh, parse_trends, parse_news, primary_source, source_excerpt
 from tiktok_daily.video import subtitles, timestamp
 from tiktok_daily.writer import Writer, validate_package, finalize_package
-from tiktok_daily.__main__ import live
+from tiktok_daily.__main__ import live, generate
 
 
 class ClockTests(unittest.TestCase):
@@ -41,6 +41,20 @@ class ClockTests(unittest.TestCase):
 
 
 class BufferTests(unittest.TestCase):
+    def test_missing_channel_and_deleted_post_are_reported_without_a_traceback(self):
+        api=Buffer("test-secret")
+        with patch.object(api,"query",return_value={"channel":None}):
+            with self.assertRaisesRegex(WorkflowError,"not found"):
+                api.preflight("missing")
+        with patch.object(api,"query",return_value={"post":None}):
+            with self.assertRaisesRegex(WorkflowError,"no replacement"):
+                api.post("deleted")
+
+    def test_invalid_json_is_a_workflow_error(self):
+        with patch("tiktok_daily.common.request",return_value=b"<html>Temporarily unavailable</html>"):
+            with self.assertRaisesRegex(WorkflowError,"Invalid JSON"):
+                json_request("https://api.buffer.com")
+
     def test_current_graphql_video_contract_and_ai_label(self):
         api=Buffer("test-secret")
         seen={}
@@ -93,6 +107,43 @@ class BufferTests(unittest.TestCase):
 
 
 class DuplicateTests(unittest.TestCase):
+    def test_status_checks_later_posts_after_uncertain_or_failed_older_posts(self):
+        ledger={"version":1,"days":{
+            "2026-10-17":{"status":"submission_uncertain","organization_id":"o1","channel_id":"t1","caption":"old"},
+            "2026-10-18":{"status":"scheduled","post_id":"failed"},
+            "2026-10-19":{"status":"scheduled","post_id":"delivered"}}}
+        revisions=["s0"]
+        checked=[]
+        class FakeGitHub:
+            def __init__(self,*args):pass
+            def free_only(self):return {}
+            def load(self,*args):return copy.deepcopy(ledger),revisions[-1]
+            def save(self,path,value,sha):
+                if sha!=revisions[-1]:raise AssertionError("Stale ledger SHA after a failed post")
+                revisions.append("s"+str(len(revisions)))
+                ledger.clear();ledger.update(copy.deepcopy(value))
+                return revisions[-1]
+            def cleanup(self,*args):pass
+        class FakeBuffer:
+            def __init__(self,*args):pass
+            def preflight(self,*args):return {"organizationId":"o1"}
+            def find_existing(self,*args):return None
+            def post(self,post_id):
+                checked.append(post_id)
+                return {"id":post_id,"status":"error" if post_id=="failed" else "sent",
+                        "schedulingType":"automatic","error":{"message":"Channel rejected the post"}}
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.dict(os.environ,{"BUFFER_TIKTOK_CHANNEL_ID":"t1"}), \
+             patch("tiktok_daily.__main__.GitHub",FakeGitHub),patch("tiktok_daily.__main__.Buffer",FakeBuffer):
+            with self.assertRaisesRegex(WorkflowError,"remaining posts were still checked"):
+                live(config(),Path(directory),"status")
+            result=json.loads((Path(directory)/"result.json").read_text())
+        self.assertEqual(checked,["failed","delivered"])
+        self.assertEqual(len(result["posts"]),3)
+        self.assertTrue(result["posts"][-1]["published"])
+        self.assertEqual(ledger["days"]["2026-10-18"]["status"],"error")
+        self.assertEqual(ledger["days"]["2026-10-19"]["status"],"sent")
+
     def test_committed_reservation_precedes_post_and_retry_never_posts_twice(self):
         cfg=config()
         ledger={"version":1,"days":{}}
@@ -144,13 +195,74 @@ class SubtitleTests(unittest.TestCase):
         self.assertEqual(timestamp(61.999),"00:01:01,999")
 
 
+class ResearchTests(unittest.TestCase):
+    def test_trend_primary_publisher_uses_host_not_display_name(self):
+        cfg=config()
+        self.assertTrue(primary_source("https://www.nasa.gov/science/story/",cfg))
+        self.assertTrue(primary_source("https://science.nasa.gov/story/",cfg))
+        for url in ["https://nasa.gov.example.com/story","https://fake-nasa.gov/story","http://nasa.gov/story","https://nasa.gov@evil.example/story"]:
+            self.assertFalse(primary_source(url,cfg))
+        xml='''<rss xmlns:ht="https://trends.google.com/trending/rss"><channel><item>
+          <title>NASA</title><pubDate>Tue, 20 Oct 2026 05:00:00 GMT</pubDate>
+          <ht:news_item><ht:news_item_title>NASA science news</ht:news_item_title>
+          <ht:news_item_url>https://www.nasa.gov/science/story/</ht:news_item_url>
+          <ht:news_item_source>NASA</ht:news_item_source></ht:news_item></item></channel></rss>'''
+        items=parse_trends(xml,"US",cfg,datetime(2026,10,20,6,tzinfo=timezone.utc))
+        self.assertTrue(items[0]["sources"][0]["primary"])
+
+    def test_primary_feed_context_keeps_fresh_science_titles(self):
+        feed=next(f for f in config()["news_feeds"] if f["name"]=="NASA")
+        xml='''<rss><channel><item><title>Watching the Clouds Go By</title>
+          <pubDate>Tue, 20 Oct 2026 05:00:00 GMT</pubDate>
+          <link>https://www.nasa.gov/story/</link><description>A science story.</description></item></channel></rss>'''
+        self.assertEqual(len(parse_news(xml,feed,config(),datetime(2026,10,20,6,tzinfo=timezone.utc))),1)
+
+    def test_accessible_primary_feed_summary_survives_article_outage(self):
+        source={"url":"https://www.nasa.gov/story/","primary":True,
+                "feed_summary":" ".join(["A spacecraft must survive vibration and shock during launch."]*5)}
+        with patch("tiktok_daily.research.request",side_effect=WorkflowError("HTTP 503 from www.nasa.gov")):
+            result=source_excerpt(source)
+            self.assertEqual(result["evidence_origin"],"primary_feed_summary")
+            with self.assertRaises(WorkflowError):source_excerpt({**source,"primary":False})
+
+    def test_source_outages_do_not_exhaust_ai_retry_budget(self):
+        sources=[{"id":"1","title":"Spacecraft testing","url":"https://www.nasa.gov/story/",
+                  "publisher":"NASA","domain":"www.nasa.gov","primary":True,"excerpt":"Evidence for a script."}]
+        candidates=[{"title":"Unavailable "+str(i),"sources":[{"url":"https://example.com/"}]} for i in range(6)]
+        candidates.append({"title":"NASA testing","sources":sources,"key":"topic1","signal":"Fresh news"})
+        def fake_enrich(raw):raise WorkflowError("HTTP 503 from publisher.example")
+        package={"title":"Spacecraft testing","scenes":[],"caption":"Why test spacecraft?","hashtags":["#Zambia","#Space","#NASA"]}
+        with tempfile.TemporaryDirectory() as directory, \
+             patch("tiktok_daily.__main__.research",return_value=(candidates,[])), \
+             patch("tiktok_daily.__main__.enrich",side_effect=fake_enrich), \
+             patch("tiktok_daily.__main__.Writer") as writer, \
+             patch("tiktok_daily.__main__.render",return_value={"decoded_ok":True}), \
+             patch("tiktok_daily.__main__.sha256",return_value="hash"):
+            writer.return_value.write.return_value=package
+            writer.return_value.verify.return_value={"supported":True}
+            result=generate(config(),Path(directory),datetime(2026,10,20,6,tzinfo=timezone.utc))
+        self.assertEqual(result["topic"],"NASA testing")
+        writer.return_value.write.assert_called_once()
+
+
 class EditorialTests(unittest.TestCase):
-    def test_an_open_question_is_not_treated_as_a_factual_assertion(self):
+    def test_questions_and_captions_are_checked_for_unsupported_premises(self):
         writer=Writer.__new__(Writer)
-        package={"scenes":[{"title":"Your view","narration":"Is fictional romance real infidelity? What do you think?","source_ids":["1"]}]}
-        with patch.object(writer,"json",side_effect=AssertionError("No factual assertion to send")):
-            result=writer.verify(package,{"sources":[]})
-        self.assertTrue(result["supported"])
+        package={"title":"Spacecraft testing","caption":"Why did NASA cancel the launch?",
+                 "scenes":[{"title":"Your view","narration":"Would you try this?","source_ids":["1"]}]}
+        candidate={"sources":[{"id":"1","title":"NASA tests spacecraft","publisher":"NASA","excerpt":"NASA tests spacecraft vibrations."}]}
+        with patch.object(writer,"json",side_effect=[{"supported":True,"reason":"Opinion question"},
+                                                     {"supported":False,"reason":"No launch cancellation in evidence"}]) as check:
+            with self.assertRaisesRegex(WorkflowError,"Video title and caption"):
+                writer.verify(package,candidate)
+        self.assertIn("Would you try this?",check.call_args_list[0].args[1])
+        self.assertIn("Why did NASA cancel",check.call_args_list[1].args[1])
+
+    def test_cleanup_preserves_qualifications_after_dashes(self):
+        package,candidate=self.fixture()
+        package["scenes"][0]["narration"]="A future mission is planned — it has not been launched."
+        finalize_package(package,candidate)
+        self.assertIn("it has not been launched",package["scenes"][0]["narration"])
 
     def fixture(self):
         candidate={"title":"Grand Theft Auto VI", "sources":[{"id":"1","title":"Gaming relationships",

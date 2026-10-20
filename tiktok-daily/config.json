@@ -33,7 +33,8 @@
       "name": "NASA",
       "url": "https://www.nasa.gov/feed/",
       "region": "world",
-      "primary": true
+      "primary": true,
+      "topics": ["science", "space"]
     },
     {
       "name": "BBC Technology",

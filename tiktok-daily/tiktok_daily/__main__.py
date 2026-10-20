@@ -34,9 +34,12 @@ def generate(cfg,out,now,seen=(),candidate_file=None,package_file=None):
         raise WorkflowError("No fresh eligible topics were available; no stale or invented trend was substituted")
     writer=None
     failures=[]
-    for raw in candidates[:10]:
+    script_failures=0
+    for raw in candidates:
+        stage="sources"
         try:
             candidate=raw if all(s.get("excerpt") for s in raw["sources"]) else enrich(raw)
+            stage="generation"
             print("Writing original script:",candidate["title"],flush=True)
             if package_file:
                 package=json.loads(Path(package_file).read_text())
@@ -72,14 +75,17 @@ def generate(cfg,out,now,seen=(),candidate_file=None,package_file=None):
             dump(out/"result.json",result)
             return result
         except WorkflowError as exc:
-            failures.append({"topic":raw["title"],"reason":str(exc)})
+            failures.append({"topic":raw["title"],"stage":stage,"reason":str(exc)})
             dump(out/"rejected-topics.json",failures)
             if writer is not None and getattr(writer,"attempts",None):
                 dump(out/"script-attempts.json",writer.attempts)
             if writer is not None and getattr(writer,"last_raw",None):
                 (out/"last-model-output.txt").write_text(writer.last_raw)
             print("Skipped topic:",str(exc),flush=True)
-            if package_file or len(failures)>=5:
+            script_failures += stage != "sources"
+            # Unavailable publishers must not consume the expensive AI retry budget
+            # or prevent later first-party feed candidates from being attempted.
+            if package_file or script_failures>=3:
                 break
     raise WorkflowError("No topic passed source, script, and media checks. See rejected-topics.json")
 
@@ -95,8 +101,7 @@ def check_existing(buffer,github,ledger,sha,cfg,day):
             raise WorkflowError("A prior submission has an uncertain outcome. No retry was made: inspect Buffer before clearing this day")
     entry.update({"post_id":post["id"],"status":post["status"],"last_checked":now_local(cfg).isoformat()})
     sha=github.save(cfg["state_path"],ledger,sha)
-    result=post_summary(post)
-    return {**result,"day":day,"existing_post":True},sha
+    return {**post,"day":day,"existing_post":True},sha
 
 
 def live(cfg,out,mode):
@@ -116,15 +121,21 @@ def live(cfg,out,mode):
         for saved_day,entry in ledger["days"].items():
             if entry.get("status") in ("sent","error"):
                 continue
-            status,ledger_sha=check_existing(buffer,github,ledger,ledger_sha,cfg,saved_day)
-            results.append(status)
+            try:
+                post,ledger_sha=check_existing(buffer,github,ledger,ledger_sha,cfg,saved_day)
+                results.append({**post_summary(post),"day":saved_day,"existing_post":True})
+            except WorkflowError as exc:
+                results.append({"day":saved_day,"status":"check_failed","error":str(exc),"published":None})
         github.cleanup(ledger,now,cfg["retention_days"])
         github.save(cfg["state_path"],ledger,ledger_sha)
         result={"status":"status_checked","posts":results,"published":any(r.get("published") for r in results)}
         dump(out/"result.json",result)
+        if any(r.get("error") for r in results):
+            raise WorkflowError("Some delivery checks failed; all remaining posts were still checked. See result.json")
         return result
     if day in ledger["days"]:
-        result,_=check_existing(buffer,github,ledger,ledger_sha,cfg,day)
+        post,_=check_existing(buffer,github,ledger,ledger_sha,cfg,day)
+        result={**post_summary(post),"day":day,"existing_post":True}
         dump(out/"result.json",result)
         return result
     cutoff=(now-timedelta(days=cfg["repeat_window_days"])).date().isoformat()

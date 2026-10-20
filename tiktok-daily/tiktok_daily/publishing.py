@@ -33,6 +33,8 @@ class Buffer:
     def query(self, query, variables=None):
         data=json_request(self.endpoint,data={"query":query,"variables":variables or {}},
                           headers={"Authorization":"Bearer " + self.token},timeout=45)
+        if not isinstance(data,dict):
+            raise WorkflowError("Buffer returned an unexpected response")
         if data.get("errors"):
             messages="; ".join(str(e.get("message","GraphQL error")) for e in data["errors"])
             raise WorkflowError("Buffer GraphQL rejected the request: " + messages[:700])
@@ -54,7 +56,9 @@ class Buffer:
         data=self.query("""query TikTokConnection($input: ChannelInput!) {
           channel(input:$input) { id name service organizationId isDisconnected isLocked isQueuePaused }
         }""",{"input":{"id":channel_id}})
-        channel=data["channel"]
+        channel=data.get("channel")
+        if not isinstance(channel,dict):
+            raise WorkflowError("Selected Buffer channel was not found or is inaccessible")
         if channel["service"]!="tiktok":
             raise WorkflowError("Selected Buffer channel is not a TikTok account")
         if channel["isDisconnected"] or channel["isLocked"] or channel["isQueuePaused"]:
@@ -75,7 +79,10 @@ class Buffer:
         return post
 
     def post(self,post_id):
-        return self.query(POST_QUERY,{"input":{"id":post_id}})["post"]
+        post=self.query(POST_QUERY,{"input":{"id":post_id}}).get("post")
+        if not isinstance(post,dict) or not post.get("id"):
+            raise WorkflowError("Saved Buffer post was not found or is inaccessible; no replacement was created")
+        return post
 
     def find_existing(self,org_id,channel_id,text):
         cursor=None
