@@ -1,11 +1,15 @@
 name: Verify workflow
 on:
   push:
+    branches: [main]
     paths: ['tiktok-daily/**', '.github/workflows/tiktok-*.yml']
   pull_request:
     paths: ['tiktok-daily/**', '.github/workflows/tiktok-*.yml']
 permissions:
   contents: read
+concurrency:
+  group: verify-tiktok-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     if: github.event.repository.private == false
@@ -22,7 +26,7 @@ jobs:
       - run: python -m unittest discover -s tests -v
 
   real-video:
-    if: github.event.repository.private == false && (github.ref_name == 'tiktok-daily-automation' || github.head_ref == 'tiktok-daily-automation')
+    if: github.event.repository.private == false && github.event_name == 'pull_request' && github.head_ref == 'tiktok-daily-automation'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     defaults:
